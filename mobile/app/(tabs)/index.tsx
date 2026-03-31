@@ -73,10 +73,10 @@ export default function HomeScreen() {
 
         {/* Carte solde */}
         <View style={[styles.balanceCard, { backgroundColor: isDark ? '#1e1e1e' : '#f0f0f3' }]}>
-          <ThemedText style={styles.balanceLabel}>Solde total</ThemedText>
-          <ThemedText style={styles.balanceAmount}>{formatCurrency(totalBalance)}</ThemedText>
+          <ThemedText style={styles.balanceLabel}>Bienvenue sur :</ThemedText>
+          <ThemedText style={styles.balanceAmount}>Gestion de clients bancaires</ThemedText>
           <View style={styles.balanceFooter}>
-            <ThemedText style={styles.balanceSubtext}>Dernière mise à jour : aujourd'hui</ThemedText>
+            <ThemedText style={styles.balanceSubtext}>Une application d'aide à la gestion de vos clients.</ThemedText>
           </View>
         </View>
 
@@ -167,7 +167,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   balanceAmount: {
-    fontSize: 36,
+    fontSize: 28,
     fontWeight: 'bold',
     marginBottom: 12,
   },

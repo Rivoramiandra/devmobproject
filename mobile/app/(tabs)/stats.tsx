@@ -1,19 +1,34 @@
-import React from 'react';
-import { StyleSheet, View, ScrollView, Dimensions, TouchableOpacity } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import {
+  StyleSheet,
+  View,
+  ScrollView,
+  Dimensions,
+  TouchableOpacity,
+  Alert,
+  ActivityIndicator,
+  Platform,
+} from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Ionicons } from '@expo/vector-icons';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useRouter } from 'expo-router';
-import { BarChart, PieChart } from 'react-native-chart-kit';
+import { useFocusEffect } from '@react-navigation/native';
+import { BarChart } from 'react-native-chart-kit';
 
-// Données simulées (à remplacer par vos données réelles)
-const mockData = [
-  { id: 1, nom: 'Client A', solde: 1200 },
-  { id: 2, nom: 'Client B', solde: 4500 },
-  { id: 3, nom: 'Client C', solde: 800 },
-  { id: 4, nom: 'Client D', solde: 5500 },
-];
+const API_BASE_URL = Platform.select({
+  android: 'http://192.168.137.128:8000/api',
+  ios: 'http://192.168.137.128:8000/api',
+  default: 'http://localhost:8000/api',
+});
+
+type Client = {
+  id: number;
+  num_compte: string;
+  nom: string;
+  solde: number;
+};
 
 export default function StatsScreen() {
   const router = useRouter();
@@ -21,26 +36,45 @@ export default function StatsScreen() {
   const isDark = colorScheme === 'dark';
   const screenWidth = Dimensions.get('window').width;
 
-  // Calculs statistiques
-  const soldes = mockData.map(c => c.solde);
-  const total = soldes.reduce((a, b) => a + b, 0);
-  const min = Math.min(...soldes);
-  const max = Math.max(...soldes);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Données pour l'histogramme
-  const barChartData = {
-    labels: mockData.map(c => c.nom),
-    datasets: [{ data: soldes }],
+  const fetchClients = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/clients`);
+      if (!response.ok) throw new Error('Erreur lors du chargement des clients');
+      const data = await response.json();
+      setClients(data);
+    } catch (error: any) {
+      Alert.alert('Erreur', error.message || 'Impossible de charger les clients');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Données pour le camembert
-  const pieChartData = mockData.map(client => ({
-    name: client.nom,
-    amount: client.solde,
-    color: `hsl(${client.id * 90}, 70%, 60%)`, // Couleurs dynamiques
-    legendFontColor: isDark ? '#fff' : '#000',
-    legendFontSize: 12,
-  }));
+  // Recharger les données chaque fois que l'écran est affiché (focus)
+  useFocusEffect(
+    useCallback(() => {
+      fetchClients();
+    }, [])
+  );
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'MGA' }).format(amount);
+  };
+
+  // Calculs statistiques
+  const soldes = clients.map(c => Number(c.solde));
+  const total = soldes.reduce((a, b) => a + b, 0);
+  const min = soldes.length > 0 ? Math.min(...soldes) : 0;
+  const max = soldes.length > 0 ? Math.max(...soldes) : 0;
+
+  // Données pour l'histogramme à trois barres
+  const barChartData = {
+    labels: ['Total', 'Min', 'Max'],
+    datasets: [{ data: [total, min, max] }],
+  };
 
   // Configuration du graphique en fonction du thème
   const chartConfig = {
@@ -54,13 +88,43 @@ export default function StatsScreen() {
     propsForLabels: { fontSize: 12 },
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(amount);
-  };
+  if (loading) {
+    return (
+      <ThemedView style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.push('/')} style={styles.backButton}>
+            <Ionicons name="arrow-back-outline" size={28} color={isDark ? '#BB86FC' : '#6200ee'} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.profileImage}>
+            <Ionicons name="person-circle" size={48} color={isDark ? '#BB86FC' : '#6200ee'} />
+          </TouchableOpacity>
+        </View>
+        <ActivityIndicator size="large" color={isDark ? '#BB86FC' : '#6200ee'} style={styles.loader} />
+      </ThemedView>
+    );
+  }
+
+  if (clients.length === 0) {
+    return (
+      <ThemedView style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.push('/')} style={styles.backButton}>
+            <Ionicons name="arrow-back-outline" size={28} color={isDark ? '#BB86FC' : '#6200ee'} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.profileImage}>
+            <Ionicons name="person-circle" size={48} color={isDark ? '#BB86FC' : '#6200ee'} />
+          </TouchableOpacity>
+        </View>
+        <View style={styles.emptyContainer}>
+          <ThemedText style={styles.emptyText}>Aucun client trouvé</ThemedText>
+        </View>
+      </ThemedView>
+    );
+  }
 
   return (
     <ThemedView style={styles.container}>
-      <ScrollView 
+      <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
@@ -79,7 +143,7 @@ export default function StatsScreen() {
           <ThemedText style={styles.balanceLabel}>Solde total</ThemedText>
           <ThemedText style={styles.balanceAmount}>{formatCurrency(total)}</ThemedText>
           <View style={styles.balanceFooter}>
-            <ThemedText style={styles.balanceSubtext}>Basé sur {mockData.length} clients</ThemedText>
+            <ThemedText style={styles.balanceSubtext}>Basé sur {clients.length} clients</ThemedText>
           </View>
         </View>
 
@@ -96,10 +160,10 @@ export default function StatsScreen() {
           </View>
         </View>
 
-        {/* Graphique en histogramme */}
+        {/* Graphique en histogramme avec trois barres */}
         <View style={styles.chartSection}>
           <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>
-            Comparaison des soldes
+            Aperçu des soldes
           </ThemedText>
           <View style={[styles.chartCard, { backgroundColor: isDark ? '#1e1e1e' : '#ffffff' }]}>
             <BarChart
@@ -107,31 +171,11 @@ export default function StatsScreen() {
               width={screenWidth - 40}
               height={220}
               yAxisLabel=""
-              yAxisSuffix="€"
+              yAxisSuffix="Ar"
               chartConfig={chartConfig}
-              verticalLabelRotation={30}
+              verticalLabelRotation={0}
               fromZero
               showBarTops={false}
-              style={styles.chart}
-            />
-          </View>
-        </View>
-
-        {/* Graphique en camembert */}
-        <View style={styles.chartSection}>
-          <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>
-            Répartition des soldes
-          </ThemedText>
-          <View style={[styles.chartCard, { backgroundColor: isDark ? '#1e1e1e' : '#ffffff' }]}>
-            <PieChart
-              data={pieChartData}
-              width={screenWidth - 40}
-              height={220}
-              chartConfig={chartConfig}
-              accessor="amount"
-              backgroundColor="transparent"
-              paddingLeft="15"
-              absolute
               style={styles.chart}
             />
           </View>
@@ -148,7 +192,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   scrollContent: {
-    paddingBottom: 80, // Espace en bas pour ne pas être caché par la barre de navigation
+    paddingBottom: 80,
   },
   header: {
     flexDirection: 'row',
@@ -182,7 +226,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   balanceAmount: {
-    fontSize: 36,
+    fontSize: 30,
     fontWeight: 'bold',
     marginBottom: 12,
   },
@@ -240,5 +284,18 @@ const styles = StyleSheet.create({
   chart: {
     borderRadius: 16,
     marginVertical: 8,
+  },
+  loader: {
+    marginTop: 50,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 100,
+  },
+  emptyText: {
+    fontSize: 16,
+    opacity: 0.6,
   },
 });

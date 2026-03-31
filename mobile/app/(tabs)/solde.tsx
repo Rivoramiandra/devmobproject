@@ -1,25 +1,77 @@
-import { StyleSheet, View, ScrollView, TouchableOpacity } from 'react-native';
+import { useState, useCallback } from 'react';
+import {
+  StyleSheet,
+  View,
+  ScrollView,
+  TouchableOpacity,
+  Alert,
+  ActivityIndicator,
+  Platform,
+} from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Ionicons } from '@expo/vector-icons';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
+
+const API_BASE_URL = Platform.select({
+  android: 'http://192.168.137.128:8000/api',
+  ios: 'http://192.168.137.128:8000/api',
+  default: 'http://localhost:8000/api',
+});
+
+type Client = {
+  id: number;
+  num_compte: string;
+  nom: string;
+  solde: number;
+};
 
 export default function SoldeScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
-  // Données simulées (à remplacer par vos données réelles)
-  const totalBalance = 15000.00;
-  const minMaxData = [
-    { id: 1, label: "Solde minimal", amount: 400.00, date: "2025-03-25", type: "debit" },
-    { id: 2, label: "Solde maximal", amount: 8500.00, date: "2025-03-28", type: "credit" },
-  ];
+  const [clients, setClients] = useState<Client[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchClients = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/clients`);
+      if (!response.ok) throw new Error('Erreur lors du chargement des clients');
+      const data = await response.json();
+      setClients(data);
+    } catch (error: any) {
+      Alert.alert('Erreur', error.message || 'Impossible de charger les clients');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Recharger les données chaque fois que l'écran est affiché (focus)
+  useFocusEffect(
+    useCallback(() => {
+      fetchClients();
+    }, [])
+  );
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(amount);
+    return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'MGA' }).format(amount);
   };
+
+  // Calculs statistiques
+  const totalBalance = clients.reduce((sum, c) => sum + Number(c.solde), 0);
+  const minClient = clients.length > 0
+    ? clients.reduce((min, c) => (Number(c.solde) < Number(min.solde) ? c : min), clients[0])
+    : null;
+  const maxClient = clients.length > 0
+    ? clients.reduce((max, c) => (Number(c.solde) > Number(max.solde) ? c : max), clients[0])
+    : null;
+
+  // Date du jour pour l'affichage
+  const today = new Date().toLocaleDateString('fr-FR');
 
   return (
     <ThemedView style={styles.container}>
@@ -34,44 +86,75 @@ export default function SoldeScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Carte du solde total */}
-        <View style={[styles.balanceCard, { backgroundColor: isDark ? '#1e1e1e' : '#f0f0f3' }]}>
-          <ThemedText style={styles.balanceLabel}>Solde total</ThemedText>
-          <ThemedText style={styles.balanceAmount}>{formatCurrency(totalBalance)}</ThemedText>
-          <View style={styles.balanceFooter}>
-            <ThemedText style={styles.balanceSubtext}>Dernière mise à jour : aujourd'hui</ThemedText>
+        {loading ? (
+          <ActivityIndicator size="large" color={isDark ? '#BB86FC' : '#6200ee'} style={styles.loader} />
+        ) : clients.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <ThemedText style={styles.emptyText}>Aucun client trouvé</ThemedText>
           </View>
-        </View>
-
-        {/* Liste détaillée des soldes min et max */}
-        <View style={styles.recentSection}>
-          <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>
-            Soldes extrêmes
-          </ThemedText>
-          {minMaxData.map((item) => (
-            <View key={item.id} style={styles.transactionItem}>
-              <View style={styles.transactionIcon}>
-                <Ionicons
-                  name={item.type === 'credit' ? 'arrow-up-circle' : 'arrow-down-circle'}
-                  size={32}
-                  color={item.type === 'credit' ? '#4caf50' : '#f44336'}
-                />
+        ) : (
+          <>
+            {/* Carte du solde total */}
+            <View style={[styles.balanceCard, { backgroundColor: isDark ? '#1e1e1e' : '#f0f0f3' }]}>
+              <ThemedText style={styles.balanceLabel}>Solde total</ThemedText>
+              <ThemedText style={styles.balanceAmount}>{formatCurrency(totalBalance)}</ThemedText>
+              <View style={styles.balanceFooter}>
+                <ThemedText style={styles.balanceSubtext}>Dernière mise à jour : {today}</ThemedText>
               </View>
-              <View style={styles.transactionDetails}>
-                <ThemedText style={styles.transactionLabel}>{item.label}</ThemedText>
-                <ThemedText style={styles.transactionDate}>{item.date}</ThemedText>
-              </View>
-              <ThemedText
-                style={[
-                  styles.transactionAmount,
-                  { color: item.type === 'credit' ? '#4caf50' : '#f44336' }
-                ]}
-              >
-                {item.type === 'credit' ? '+' : '-'} {formatCurrency(item.amount)}
-              </ThemedText>
             </View>
-          ))}
-        </View>
+
+            {/* Liste détaillée des soldes extrêmes */}
+            <View style={styles.recentSection}>
+              <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>
+                Soldes extrêmes
+              </ThemedText>
+
+              {/* Client avec le solde minimal */}
+              {minClient && (
+                <View style={styles.transactionItem}>
+                  <View style={styles.transactionIcon}>
+                    <Ionicons
+                      name="arrow-down-circle"
+                      size={32}
+                      color="#f44336"
+                    />
+                  </View>
+                  <View style={styles.transactionDetails}>
+                    <ThemedText style={styles.transactionLabel}>Solde minimal</ThemedText>
+                    <ThemedText style={styles.clientInfo}>
+                      {minClient.nom} • {minClient.num_compte}
+                    </ThemedText>
+                  </View>
+                  <ThemedText style={[styles.transactionAmount, { color: '#f44336' }]}>
+                    {formatCurrency(Number(minClient.solde))}
+                  </ThemedText>
+                </View>
+              )}
+
+              {/* Client avec le solde maximal */}
+              {maxClient && (
+                <View style={styles.transactionItem}>
+                  <View style={styles.transactionIcon}>
+                    <Ionicons
+                      name="arrow-up-circle"
+                      size={32}
+                      color="#4caf50"
+                    />
+                  </View>
+                  <View style={styles.transactionDetails}>
+                    <ThemedText style={styles.transactionLabel}>Solde maximal</ThemedText>
+                    <ThemedText style={styles.clientInfo}>
+                      {maxClient.nom} • {maxClient.num_compte}
+                    </ThemedText>
+                  </View>
+                  <ThemedText style={[styles.transactionAmount, { color: '#4caf50' }]}>
+                    {formatCurrency(Number(maxClient.solde))}
+                  </ThemedText>
+                </View>
+              )}
+            </View>
+          </>
+        )}
       </ScrollView>
     </ThemedView>
   );
@@ -115,7 +198,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   balanceAmount: {
-    fontSize: 36,
+    fontSize: 30,
     fontWeight: 'bold',
     marginBottom: 12,
   },
@@ -151,13 +234,26 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
   },
-  transactionDate: {
-    fontSize: 12,
-    opacity: 0.6,
+  clientInfo: {
+    fontSize: 13,
+    opacity: 0.7,
     marginTop: 2,
   },
   transactionAmount: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  loader: {
+    marginTop: 50,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 100,
+  },
+  emptyText: {
+    fontSize: 16,
+    opacity: 0.6,
   },
 });

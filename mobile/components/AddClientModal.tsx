@@ -7,57 +7,96 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
+  ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { ThemedText } from './themed-text';
 import { Ionicons } from '@expo/vector-icons';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
-type Client = {
-  id: number;
-  name: string;
-  email: string;
-  total: number;
-};
+// URL automatique selon la plateforme
+const API_BASE_URL = Platform.select({
+  android: 'http://192.168.137.128:8000/api', // téléphone physique Android
+  ios: 'http://192.168.137.128:8000/api',     // téléphone physique iOS
+  default: 'http://localhost:8000/api',        // navigateur web
+});
 
 type AddClientModalProps = {
   visible: boolean;
   onClose: () => void;
-  onAdd: (client: Omit<Client, 'id'>) => void;
-  nextId: number;
+  onAddSuccess: () => void;
 };
 
-export default function AddClientModal({ visible, onClose, onAdd, nextId }: AddClientModalProps) {
+export default function AddClientModal({ visible, onClose, onAddSuccess }: AddClientModalProps) {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [total, setTotal] = useState('');
+  const [numCompte, setNumCompte] = useState('');
+  const [nom, setNom] = useState('');
+  const [solde, setSolde] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const resetForm = () => {
-    setName('');
-    setEmail('');
-    setTotal('');
+    setNumCompte('');
+    setNom('');
+    setSolde('');
   };
 
-  const handleAdd = () => {
-    if (!name.trim() || !email.trim() || !total.trim()) {
+  const handleAdd = async () => {
+    if (!numCompte.trim() || !nom.trim() || !solde.trim()) {
       Alert.alert('Erreur', 'Tous les champs sont obligatoires.');
       return;
     }
-    const amount = parseFloat(total);
-    if (isNaN(amount) || amount <= 0) {
-      Alert.alert('Erreur', 'Montant invalide.');
+    const montant = parseFloat(solde);
+    if (isNaN(montant) || montant <= 0) {
+      Alert.alert('Erreur', 'Solde invalide (doit être un nombre positif).');
       return;
     }
 
-    onAdd({
-      name: name.trim(),
-      email: email.trim(),
-      total: amount,
-    });
-    resetForm();
-    onClose();
+    setLoading(true);
+    try {
+      const requestBody = {
+        numCompte: numCompte.trim(),
+        nom: nom.trim(),
+        solde: montant,
+      };
+      console.log('📤 Envoi à', `${API_BASE_URL}/clients`, requestBody);
+
+      const response = await fetch(`${API_BASE_URL}/clients`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        let errorMessage = `Erreur ${response.status}: ${response.statusText}`;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+          console.error('❌ Erreur serveur :', {
+            status: response.status,
+            statusText: response.statusText,
+            url: response.url,
+            data: errorData,
+          });
+        } catch (parseError) {
+          console.error("⚠️ Impossible de parser la réponse d'erreur :", parseError);
+        }
+        throw new Error(errorMessage);
+      }
+
+      const createdClient = await response.json();
+      console.log('✅ Client créé :', createdClient);
+
+      resetForm();
+      onAddSuccess();
+      onClose();
+    } catch (error: any) {
+      console.error('🚨 Erreur ajout client :', error);
+      Alert.alert('Erreur', error.message || "Impossible d'ajouter le client");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleClose = () => {
@@ -83,30 +122,37 @@ export default function AddClientModal({ visible, onClose, onAdd, nextId }: AddC
 
           <TextInput
             style={[styles.input, { color: isDark ? '#fff' : '#000', borderColor: '#ccc' }]}
+            placeholder="Numéro de compte"
+            placeholderTextColor="#888"
+            value={numCompte}
+            onChangeText={setNumCompte}
+          />
+          <TextInput
+            style={[styles.input, { color: isDark ? '#fff' : '#000', borderColor: '#ccc' }]}
             placeholder="Nom complet"
             placeholderTextColor="#888"
-            value={name}
-            onChangeText={setName}
+            value={nom}
+            onChangeText={setNom}
           />
           <TextInput
             style={[styles.input, { color: isDark ? '#fff' : '#000', borderColor: '#ccc' }]}
-            placeholder="Email"
-            placeholderTextColor="#888"
-            keyboardType="email-address"
-            value={email}
-            onChangeText={setEmail}
-          />
-          <TextInput
-            style={[styles.input, { color: isDark ? '#fff' : '#000', borderColor: '#ccc' }]}
-            placeholder="Solde (€)"
+            placeholder="Solde (Ar)"
             placeholderTextColor="#888"
             keyboardType="numeric"
-            value={total}
-            onChangeText={setTotal}
+            value={solde}
+            onChangeText={setSolde}
           />
 
-          <TouchableOpacity style={styles.addButton} onPress={handleAdd}>
-            <ThemedText style={styles.buttonText}>Ajouter</ThemedText>
+          <TouchableOpacity
+            style={styles.addButton}
+            onPress={handleAdd}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="white" />
+            ) : (
+              <ThemedText style={styles.buttonText}>Ajouter</ThemedText>
+            )}
           </TouchableOpacity>
         </View>
       </View>
@@ -122,7 +168,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalContent: {
-    width: '80%',
+    width: '85%',
     borderRadius: 20,
     padding: 20,
     shadowColor: '#000',
@@ -150,7 +196,7 @@ const styles = StyleSheet.create({
   },
   addButton: {
     backgroundColor: '#6200ee',
-    padding: 12,
+    padding: 14,
     borderRadius: 8,
     alignItems: 'center',
     marginTop: 8,
@@ -158,5 +204,6 @@ const styles = StyleSheet.create({
   buttonText: {
     color: 'white',
     fontWeight: 'bold',
+    fontSize: 16,
   },
 });

@@ -1,4 +1,5 @@
-import { useState, useRef } from 'react';
+// app/(tabs)/explore.tsx
+import { useState, useRef, useEffect } from 'react';
 import {
   StyleSheet,
   View,
@@ -6,6 +7,9 @@ import {
   TouchableOpacity,
   TextInput,
   Animated,
+  Alert,
+  ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ThemedText } from '@/components/themed-text';
@@ -13,12 +17,25 @@ import { ThemedView } from '@/components/themed-view';
 import { Ionicons } from '@expo/vector-icons';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import AddClientModal from '@/components/AddClientModal';
+import EditClientModal from '@/components/EditClientModal';
+
+const API_BASE_URL = Platform.select({
+  android: 'http://192.168.137.128:8000/api',
+  ios: 'http://192.168.137.128:8000/api',
+  default: 'http://localhost:8000/api',
+});
 
 type Client = {
   id: number;
-  name: string;
-  email: string;
-  total: number;
+  num_compte: string;
+  nom: string;
+  solde: number;
+};
+
+const getObservation = (solde: number): { label: string; color: string } => {
+  if (solde < 1000) return { label: 'Insuffisant', color: '#F44336' };
+  if (solde <= 5000) return { label: 'Moyen', color: '#FF9800' };
+  return { label: 'Élevé', color: '#4CAF50' };
 };
 
 export default function ExploreScreen() {
@@ -26,54 +43,82 @@ export default function ExploreScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
-  // Données simulées – liste de clients (state mutable)
-  const [clients, setClients] = useState<Client[]>([
-    { id: 1, name: 'Sophie Martin', email: 'sophie.martin@email.com', total: 1250.00 },
-    { id: 2, name: 'Lucas Bernard', email: 'lucas.bernard@email.com', total: 3420.50 },
-    { id: 3, name: 'Emma Petit', email: 'emma.petit@email.com', total: 780.00 },
-    { id: 4, name: 'Thomas Durand', email: 'thomas.durand@email.com', total: 2150.75 },
-  ]);
-
-  // États pour la recherche
+  const [clients, setClients] = useState<Client[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isSearchVisible, setIsSearchVisible] = useState(false);
   const [searchText, setSearchText] = useState('');
   const searchAnim = useRef(new Animated.Value(0)).current;
-
-  // État du modal
   const [modalVisible, setModalVisible] = useState(false);
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
 
-  // Filtrage des clients
+  useEffect(() => {
+    fetchClients();
+  }, []);
+
+  const fetchClients = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/clients`);
+      if (!response.ok) throw new Error('Erreur lors du chargement des clients');
+      const data = await response.json();
+      setClients(data);
+    } catch (error: any) {
+      Alert.alert('Erreur', error.message || 'Impossible de charger les clients');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const filteredClients = clients.filter(client =>
-    client.name.toLowerCase().includes(searchText.toLowerCase()) ||
-    client.email.toLowerCase().includes(searchText.toLowerCase())
+    client.nom.toLowerCase().includes(searchText.toLowerCase()) ||
+    client.num_compte.toLowerCase().includes(searchText.toLowerCase())
   );
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(amount);
+    return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'MGA' }).format(amount);
   };
 
-  // Handlers
-  const handleEditClient = (id: number) => {
-    console.log('Modifier client', id);
-    // À implémenter : ouvrir un modal de modification
+  const totalSolde = clients.reduce((sum, c) => sum + Number(c.solde), 0);
+  const minSolde = clients.length > 0 ? Math.min(...clients.map(c => Number(c.solde))) : 0;
+  const maxSolde = clients.length > 0 ? Math.max(...clients.map(c => Number(c.solde))) : 0;
+
+  const handleEditClient = (client: Client) => {
+    setSelectedClient(client);
+    setEditModalVisible(true);
   };
 
-  const handleDeleteClient = (id: number) => {
-    console.log('Supprimer client', id);
-    setClients(prev => prev.filter(client => client.id !== id));
-  };
-
-  const handleAddAction = () => {
-    setModalVisible(true);
-  };
-
-  const handleObservationAction = () => {
-    console.log('Action Observation');
+  const handleDeleteClient = async (id: number) => {
+    Alert.alert(
+      'Confirmation',
+      'Voulez-vous vraiment supprimer ce client ?',
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Supprimer',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const response = await fetch(`${API_BASE_URL}/clients/${id}`, {
+                method: 'DELETE',
+              });
+              if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Erreur lors de la suppression');
+              }
+              console.log('✅ Client supprimé :', id);
+              await fetchClients();
+            } catch (error: any) {
+              Alert.alert('Erreur', error.message);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleSearchAction = () => {
     if (isSearchVisible) {
-      // Fermer la recherche et réinitialiser le texte
       Animated.timing(searchAnim, {
         toValue: 0,
         duration: 300,
@@ -83,7 +128,6 @@ export default function ExploreScreen() {
         setSearchText('');
       });
     } else {
-      // Ouvrir la recherche
       setIsSearchVisible(true);
       Animated.timing(searchAnim, {
         toValue: 1,
@@ -104,16 +148,12 @@ export default function ExploreScreen() {
     });
   };
 
-  // Ajout d'un client
-  const handleAddClient = (newClient: Omit<Client, 'id'>) => {
-    const newId = Math.max(0, ...clients.map(c => c.id)) + 1;
-    setClients([...clients, { id: newId, ...newClient }]);
-  };
-
   return (
     <ThemedView style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Section profil avec bouton retour */}
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        style={{ flex: 1 }}  // ← Ajout de flex: 1 pour permettre le scroll
+      >
         <View style={styles.profileSection}>
           <TouchableOpacity onPress={() => router.push('/')} style={styles.backButton}>
             <Ionicons name="arrow-back-outline" size={28} color={isDark ? '#BB86FC' : '#6200ee'} />
@@ -123,20 +163,21 @@ export default function ExploreScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* 3 boutons d'action */}
         <View style={styles.actionsRow}>
-          <TouchableOpacity style={styles.actionButton} onPress={handleAddAction}>
+          <TouchableOpacity style={styles.actionButton} onPress={() => setModalVisible(true)}>
             <View style={[styles.iconCircle, { backgroundColor: isDark ? '#2c2c2c' : '#ffffff' }]}>
               <Ionicons name="add-circle-outline" size={28} color={isDark ? '#BB86FC' : '#6200ee'} />
             </View>
             <ThemedText style={styles.actionLabel}>Ajouter</ThemedText>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionButton} onPress={handleObservationAction}>
+
+          <TouchableOpacity style={styles.actionButton}>
             <View style={[styles.iconCircle, { backgroundColor: isDark ? '#2c2c2c' : '#ffffff' }]}>
               <Ionicons name="eye-outline" size={28} color={isDark ? '#BB86FC' : '#6200ee'} />
             </View>
             <ThemedText style={styles.actionLabel}>Observation</ThemedText>
           </TouchableOpacity>
+
           <TouchableOpacity style={styles.actionButton} onPress={handleSearchAction}>
             <View style={[styles.iconCircle, { backgroundColor: isDark ? '#2c2c2c' : '#ffffff' }]}>
               <Ionicons name="search-outline" size={28} color={isDark ? '#BB86FC' : '#6200ee'} />
@@ -145,21 +186,18 @@ export default function ExploreScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Champ de recherche animé */}
         {isSearchVisible && (
           <Animated.View
             style={[
               styles.searchContainer,
               {
                 opacity: searchAnim,
-                transform: [
-                  {
-                    translateY: searchAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [-20, 0],
-                    }),
-                  },
-                ],
+                transform: [{
+                  translateY: searchAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-20, 0],
+                  }),
+                }],
               },
             ]}
           >
@@ -188,51 +226,96 @@ export default function ExploreScreen() {
           </Animated.View>
         )}
 
-        {/* Liste des clients */}
         <View style={styles.clientsSection}>
           <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>
-            Liste des clients {searchText ? `(${filteredClients.length} résultat(s))` : ''}
+            Liste des clients {searchText ? `(${filteredClients.length} résultat(s))` : `(${clients.length})`}
           </ThemedText>
-          {filteredClients.length === 0 ? (
+
+          {loading ? (
+            <ActivityIndicator size="large" color={isDark ? '#BB86FC' : '#6200ee'} style={styles.loader} />
+          ) : filteredClients.length === 0 ? (
             <View style={styles.emptyContainer}>
               <ThemedText style={styles.emptyText}>Aucun client trouvé</ThemedText>
             </View>
           ) : (
-            filteredClients.map((client) => (
-              <View key={client.id} style={styles.clientItem}>
-                <View style={styles.clientInfo}>
-                  <ThemedText style={styles.clientName}>{client.name}</ThemedText>
-                  <ThemedText style={styles.clientEmail}>{client.email}</ThemedText>
-                  <ThemedText style={styles.clientTotal}>
-                    {formatCurrency(client.total)}
-                  </ThemedText>
+            filteredClients.map((client) => {
+              const obs = getObservation(Number(client.solde));
+              return (
+                <View key={client.id} style={styles.clientItem}>
+                  <View style={styles.clientIcon}>
+                    <Ionicons name="person-outline" size={32} color={obs.color} />
+                  </View>
+                  <View style={styles.clientDetails}>
+                    <View style={styles.clientHeader}>
+                      <ThemedText style={styles.clientName}>{client.nom}</ThemedText>
+                      <View style={styles.clientActions}>
+                        <TouchableOpacity onPress={() => handleEditClient(client)} style={styles.actionIcon}>
+                          <Ionicons name="create-outline" size={24} color="#4CAF50" />
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => handleDeleteClient(client.id)} style={styles.actionIcon}>
+                          <Ionicons name="trash-outline" size={24} color="#F44336" />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                    <View style={styles.clientInfo}>
+                      <ThemedText style={styles.clientCompte}>N° {client.num_compte}</ThemedText>
+                      <ThemedText style={styles.clientSolde}>
+                        {formatCurrency(Number(client.solde))}
+                      </ThemedText>
+                      <View style={[styles.obsBadge, { backgroundColor: obs.color + '22' }]}>
+                        <ThemedText style={[styles.obsText, { color: obs.color }]}>
+                          {obs.label}
+                        </ThemedText>
+                      </View>
+                    </View>
+                  </View>
                 </View>
-                <View style={styles.clientActions}>
-                  <TouchableOpacity
-                    style={styles.actionIcon}
-                    onPress={() => handleEditClient(client.id)}
-                  >
-                    <Ionicons name="create-outline" size={24} color="#4CAF50" />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.actionIcon}
-                    onPress={() => handleDeleteClient(client.id)}
-                  >
-                    <Ionicons name="trash-outline" size={24} color="#F44336" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))
+              );
+            })
           )}
         </View>
+
+        {!loading && clients.length > 0 && (
+          <View style={[styles.statsContainer, { backgroundColor: isDark ? '#2c2c2c' : '#f5f5f5' }]}>
+            <ThemedText style={styles.statsTitle}>📊 Statistiques</ThemedText>
+            <View style={styles.statsRow}>
+              <View style={styles.statItem}>
+                <ThemedText style={styles.statLabel}>Total</ThemedText>
+                <ThemedText style={[styles.statValue, { color: '#6200ee' }]}>
+                  {formatCurrency(totalSolde)}
+                </ThemedText>
+              </View>
+              <View style={styles.statItem}>
+                <ThemedText style={styles.statLabel}>Minimum</ThemedText>
+                <ThemedText style={[styles.statValue, { color: '#F44336' }]}>
+                  {formatCurrency(minSolde)}
+                </ThemedText>
+              </View>
+              <View style={styles.statItem}>
+                <ThemedText style={styles.statLabel}>Maximum</ThemedText>
+                <ThemedText style={[styles.statValue, { color: '#4CAF50' }]}>
+                  {formatCurrency(maxSolde)}
+                </ThemedText>
+              </View>
+            </View>
+          </View>
+        )}
       </ScrollView>
 
-      {/* Modal d'ajout de client */}
       <AddClientModal
         visible={modalVisible}
         onClose={() => setModalVisible(false)}
-        onAdd={handleAddClient}
-        nextId={Math.max(0, ...clients.map(c => c.id)) + 1}
+        onAddSuccess={fetchClients}
+      />
+
+      <EditClientModal
+        visible={editModalVisible}
+        client={selectedClient}
+        onClose={() => {
+          setEditModalVisible(false);
+          setSelectedClient(null);
+        }}
+        onEditSuccess={fetchClients}
       />
     </ThemedView>
   );
@@ -250,10 +333,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 24,
   },
-  backButton: {
-    padding: 4,
-    marginRight: 8,
-  },
+  backButton: { padding: 4 },
   profileImage: {
     width: 48,
     height: 48,
@@ -287,15 +367,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
   },
-  searchContainer: {
-    marginBottom: 20,
-  },
+  searchContainer: { marginBottom: 20 },
   searchInputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: 12,
     paddingHorizontal: 12,
-    position: 'relative',
   },
   searchIcon: {
     position: 'absolute',
@@ -329,37 +406,59 @@ const styles = StyleSheet.create({
   },
   clientItem: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    alignItems: 'flex-start',
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(0,0,0,0.05)',
   },
-  clientInfo: {
+  clientIcon: {
+    marginRight: 12,
+    marginTop: 2,
+  },
+  clientDetails: {
     flex: 1,
+  },
+  clientHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
   },
   clientName: {
     fontSize: 16,
     fontWeight: '600',
   },
-  clientEmail: {
-    fontSize: 12,
-    opacity: 0.6,
-    marginTop: 2,
-  },
-  clientTotal: {
-    fontSize: 14,
-    fontWeight: '500',
-    marginTop: 4,
-    color: '#6200ee',
-  },
   clientActions: {
     flexDirection: 'row',
-    alignItems: 'center',
   },
   actionIcon: {
     marginLeft: 16,
     padding: 4,
+  },
+  clientInfo: {
+    marginTop: 2,
+  },
+  clientCompte: {
+    fontSize: 13,
+    opacity: 0.7,
+    marginBottom: 2,
+  },
+  clientSolde: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#6200ee',
+    marginTop: 2,
+  },
+  obsBadge: {
+    alignSelf: 'flex-start',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    marginTop: 4,
+  },
+  obsText: {
+    fontSize: 11,
+    fontWeight: 'bold',
   },
   emptyContainer: {
     paddingVertical: 40,
@@ -368,5 +467,33 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 14,
     opacity: 0.6,
+  },
+  loader: { marginVertical: 40 },
+  statsContainer: {
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 30,
+  },
+  statsTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 12,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  statItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  statLabel: {
+    fontSize: 12,
+    opacity: 0.6,
+    marginBottom: 4,
+  },
+  statValue: {
+    fontSize: 13,
+    fontWeight: 'bold',
   },
 });
