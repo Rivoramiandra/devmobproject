@@ -12,24 +12,35 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Ionicons } from '@expo/vector-icons';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import AddClientModal from '@/components/AddClientModal';
+
+type Client = {
+  id: number;
+  name: string;
+  email: string;
+  total: number;
+};
 
 export default function ExploreScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
-  // Données simulées – liste de clients
-  const clients = [
+  // Données simulées – liste de clients (state mutable)
+  const [clients, setClients] = useState<Client[]>([
     { id: 1, name: 'Sophie Martin', email: 'sophie.martin@email.com', total: 1250.00 },
     { id: 2, name: 'Lucas Bernard', email: 'lucas.bernard@email.com', total: 3420.50 },
     { id: 3, name: 'Emma Petit', email: 'emma.petit@email.com', total: 780.00 },
     { id: 4, name: 'Thomas Durand', email: 'thomas.durand@email.com', total: 2150.75 },
-  ];
+  ]);
 
   // États pour la recherche
   const [isSearchVisible, setIsSearchVisible] = useState(false);
   const [searchText, setSearchText] = useState('');
   const searchAnim = useRef(new Animated.Value(0)).current;
+
+  // État du modal
+  const [modalVisible, setModalVisible] = useState(false);
 
   // Filtrage des clients
   const filteredClients = clients.filter(client =>
@@ -44,14 +55,16 @@ export default function ExploreScreen() {
   // Handlers
   const handleEditClient = (id: number) => {
     console.log('Modifier client', id);
+    // À implémenter : ouvrir un modal de modification
   };
 
   const handleDeleteClient = (id: number) => {
     console.log('Supprimer client', id);
+    setClients(prev => prev.filter(client => client.id !== id));
   };
 
   const handleAddAction = () => {
-    console.log('Action Ajouter');
+    setModalVisible(true);
   };
 
   const handleObservationAction = () => {
@@ -91,6 +104,12 @@ export default function ExploreScreen() {
     });
   };
 
+  // Ajout d'un client
+  const handleAddClient = (newClient: Omit<Client, 'id'>) => {
+    const newId = Math.max(0, ...clients.map(c => c.id)) + 1;
+    setClients([...clients, { id: newId, ...newClient }]);
+  };
+
   return (
     <ThemedView style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false}>
@@ -99,7 +118,6 @@ export default function ExploreScreen() {
           <TouchableOpacity onPress={() => router.push('/')} style={styles.backButton}>
             <Ionicons name="arrow-back-outline" size={28} color={isDark ? '#BB86FC' : '#6200ee'} />
           </TouchableOpacity>
-         
           <TouchableOpacity style={styles.profileImage}>
             <Ionicons name="person-circle" size={48} color={isDark ? '#BB86FC' : '#6200ee'} />
           </TouchableOpacity>
@@ -208,6 +226,14 @@ export default function ExploreScreen() {
           )}
         </View>
       </ScrollView>
+
+      {/* Modal d'ajout de client */}
+      <AddClientModal
+        visible={modalVisible}
+        onClose={() => setModalVisible(false)}
+        onAdd={handleAddClient}
+        nextId={Math.max(0, ...clients.map(c => c.id)) + 1}
+      />
     </ThemedView>
   );
 }
@@ -227,14 +253,6 @@ const styles = StyleSheet.create({
   backButton: {
     padding: 4,
     marginRight: 8,
-  },
-  profileInfo: {
-    flex: 1,
-  },
-  userName: {
-    marginTop: 4,
-    fontSize: 20,
-    fontWeight: '600',
   },
   profileImage: {
     width: 48,

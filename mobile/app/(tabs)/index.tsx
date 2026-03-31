@@ -5,18 +5,57 @@ import { Ionicons } from '@expo/vector-icons';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useRouter } from 'expo-router';
 
+type RecentAction = {
+  id: number;
+  label: string;
+  date: string;
+  icon: string;
+  color: string;
+  numCompte: string;
+  nom: string;
+  solde: number;
+};
+
 export default function HomeScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
-  // Données simulées
-  const totalBalance = 45200.50;
-  const recentTransactions = [
-    { id: 1, label: "Dépôt", amount: 500, date: "2025-03-30", type: "credit" },
-    { id: 2, label: "Retrait", amount: 120, date: "2025-03-29", type: "debit" },
-    { id: 3, label: "Virement reçu", amount: 75, date: "2025-03-28", type: "credit" },
+  // Données simulées – actions récentes avec détails client
+  const recentActions: RecentAction[] = [
+    {
+      id: 1,
+      label: 'Ajout client',
+      date: '2025-03-30',
+      icon: 'person-add-outline',
+      color: '#4caf50',
+      numCompte: 'FR76 1234 5678 9012 3456',
+      nom: 'Sophie Martin',
+      solde: 1250.00,
+    },
+    {
+      id: 2,
+      label: 'Modification client',
+      date: '2025-03-29',
+      icon: 'create-outline',
+      color: '#ff9800',
+      numCompte: 'FR76 9876 5432 1098 7654',
+      nom: 'Lucas Bernard',
+      solde: 3420.50,
+    },
+    {
+      id: 3,
+      label: 'Suppression client',
+      date: '2025-03-28',
+      icon: 'trash-outline',
+      color: '#f44336',
+      numCompte: 'FR76 4567 8901 2345 6789',
+      nom: 'Emma Petit',
+      solde: 780.00,
+    },
   ];
+
+  const totalBalance = 45200.50;
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(amount);
@@ -63,30 +102,28 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Activité récente */}
+        {/* Activité récente avec détails client */}
         <View style={styles.recentSection}>
           <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>Activité récente</ThemedText>
-          {recentTransactions.map((tx) => (
-            <View key={tx.id} style={styles.transactionItem}>
-              <View style={styles.transactionIcon}>
-                <Ionicons
-                  name={tx.type === 'credit' ? 'arrow-down-circle' : 'arrow-up-circle'}
-                  size={32}
-                  color={tx.type === 'credit' ? '#4caf50' : '#f44336'}
-                />
+          {recentActions.map((action) => (
+            <View key={action.id} style={styles.actionItem}>
+              <View style={styles.actionIcon}>
+                <Ionicons name={action.icon} size={32} color={action.color} />
               </View>
-              <View style={styles.transactionDetails}>
-                <ThemedText style={styles.transactionLabel}>{tx.label}</ThemedText>
-                <ThemedText style={styles.transactionDate}>{tx.date}</ThemedText>
+              <View style={styles.actionDetails}>
+                <View style={styles.actionHeader}>
+                  <ThemedText style={styles.actionLabel}>{action.label}</ThemedText>
+                  <ThemedText style={styles.actionDate}>{action.date}</ThemedText>
+                </View>
+                <View style={styles.clientDetails}>
+                  <ThemedText style={styles.clientInfo}>
+                    {action.nom} • {action.numCompte}
+                  </ThemedText>
+                  <ThemedText style={styles.clientBalance}>
+                    {formatCurrency(action.solde)}
+                  </ThemedText>
+                </View>
               </View>
-              <ThemedText
-                style={[
-                  styles.transactionAmount,
-                  { color: tx.type === 'credit' ? '#4caf50' : '#f44336' }
-                ]}
-              >
-                {tx.type === 'credit' ? '+' : '-'} {formatCurrency(tx.amount)}
-              </ThemedText>
             </View>
           ))}
         </View>
@@ -175,30 +212,45 @@ const styles = StyleSheet.create({
     fontSize: 18,
     marginBottom: 16,
   },
-  transactionItem: {
+  actionItem: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(0,0,0,0.05)',
   },
-  transactionIcon: {
+  actionIcon: {
     marginRight: 12,
-  },
-  transactionDetails: {
-    flex: 1,
-  },
-  transactionLabel: {
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  transactionDate: {
-    fontSize: 12,
-    opacity: 0.6,
     marginTop: 2,
   },
-  transactionAmount: {
+  actionDetails: {
+    flex: 1,
+  },
+  actionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  actionLabel: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  actionDate: {
+    fontSize: 12,
+    opacity: 0.6,
+  },
+  clientDetails: {
+    marginTop: 2,
+  },
+  clientInfo: {
+    fontSize: 13,
+    opacity: 0.7,
+  },
+  clientBalance: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#6200ee',
+    marginTop: 2,
   },
 });
